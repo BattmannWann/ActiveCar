@@ -1,21 +1,33 @@
 import gymnasium as gym
 from gymnasium.spaces import Box
+
 import torch
+
 from visual_processing.fixation_locator import UnbiasedSaliencyEngine
 from visual_processing.foveal_extractor import FovealExtractor
 from visual_processing.vision_feature_encoder import FovealVisionEncoder
+
 import numpy as np
 import cv2
+
+
+"""
+As the saliency_engine has been designed in an abstract manner, you can swap out the engine you want to use by simply importing the class and swapping it into:
+
+    def __init__():
+    
+        ...
+        self.saliency_engine = ENTER_CLASS_NAME_HERE()
+"""
 
 
 
 class SaliencyFoveatedWrapper(gym.ObservationWrapper):
 
     """
-    Gym wrapper to encapsulate the active vision. The pipeline is as follows:
+    Gym wrapper to encapsulate the active vision pipeline:
 
-    Image -> Unbiased Saliency Map -> Peak Argmax
-    -> Foveal Crop -> RestNet-18 -> SAC State
+    Image -> (Unbiased) Saliency Map -> Peak Argmax -> Foveal Crop -> RestNet-18 -> SAC State
     """
 
     def __init__(self, env: gym.Env, window_grabber, crop_size: int = 96, device: str = None):
@@ -32,7 +44,7 @@ class SaliencyFoveatedWrapper(gym.ObservationWrapper):
         self.observation_space = Box(
             low = -np.inf,
             high = np.inf,
-            shape = (self.encoder.output_dim),
+            shape = (self.encoder.output_dim, ),
             dtype = np.float32
         )
 

@@ -1,6 +1,6 @@
 # Assetto Corsa Gym: WSL2 Ubuntu + NVIDIA GPU Setup
 
-This guide explains how to set up and run Assetto Corsa via Steam/Proton inside an **Ubuntu 24.04 WSL2** environment leveraging your host NVIDIA GPU.
+This guide explains how to set up and run Assetto Corsa via Steam/Proton inside an **Ubuntu 24.04 WSL2** environment leveraging an NVIDIA GPU.
 
 ---
 

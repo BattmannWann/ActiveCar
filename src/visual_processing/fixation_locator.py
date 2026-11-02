@@ -1,10 +1,47 @@
 import cv2
 import numpy as np 
+from abc import ABC, abstractmethod
 
-class SaliencyEngine:
+
+"""
+This file contains an abstract class for creating a saliency engine and accompanying implementations.
+"""
+
+# === ABSTRACT CLASS ===
+
+class BaseSaliencyEngine(ABC):
+    
+    @abstractmethod
+    def compute_heatmap(self, img_bgr: np.ndarray) -> np.ndarray:
+        
+        """Calculates normalized 2D heatmap in range [0.0, 1.0]"""
+        pass
+
+
+    def get_peak_salient_point(self, heatmap: np.ndarray) -> tuple[int, int]:
+        
+        """
+        Default peak point finder (argmax). Can be overridden if needed.
+        Finds the most salient point, represented in (x, y); where (x, y) = argmax S(x, y)
+        """
+        _, _, _, max_loc = cv2.minMaxLoc(heatmap)
+        return max_loc  # returns (x, y)
+
+
+
+# === IMPLEMENTATIONS ===
+
+class UnbiasedSaliencyEngine(BaseSaliencyEngine):
 
     """
-    This class will compute the visual saliency (heatmap) of a given image
+    TLDR; This class will compute the visual saliency (heatmap) of a given image through the Spectral Residual approach.
+    
+    This following code implements a Visual Saliency Detection Engine using the Spectral Residual (SR) approach.
+
+    In computer vision, **visual saliency** predicts where a human eye would naturally focus when looking at an image 
+    (e.g., bright spots, anomalous textures, distinct objects against a background). 
+    
+    This specific algorithm is based on the 2007 paper by Xiaodi Hou and Liqing Zhang: ["Saliency Detection: A Spectral Residual Approach"](https://cvpr.org).
     """
 
     def __init__(self, processing_dim: tuple = (128, 128)):
@@ -53,14 +90,41 @@ class SaliencyEngine:
 
         return heatmap
 
-
-    def get_peak_salient_point(self, heatmap: np.ndarray) -> tuple[int, int]:
-
-        """
-        Finds the most salient point, represented in (x, y); where (x, y) = argmax S(x, y)
-        """
-
-        _, _, _, max_loc = cv2.minMaxLoc(heatmap)
-        return max_loc # i.e. (x,y)
-
     
+    
+class FineGrainedSaliencyEngine(BaseSaliencyEngine):
+    
+    def __init__(self):
+        self.saliency = cv2.saliency.StaticSaliencyFineGrained_create()
+
+
+    def compute_heatmap(self, img_bgr: np.ndarray) -> np.ndarray:
+        
+        success, heatmap = self.saliency.computeSaliency(img_bgr)
+        
+        if not success:
+            return np.zeros(img_bgr.shape[:2], dtype=np.float32)
+        
+        # Normalize to [0, 1]
+        min_v, max_v = np.min(heatmap), np.max(heatmap)
+        return (heatmap - min_v) / (max_v - min_v + 1e-8)
+    
+    
+    
+class ColorContrastSaliencyEngine(BaseSaliencyEngine):
+    
+    def compute_heatmap(self, img_bgr: np.ndarray) -> np.ndarray:
+        
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        
+        # Compute multi-scale spatial gradients (Sobel filter magnitude)
+        grad_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize = 3)
+        grad_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize = 3)
+        magnitude = cv2.magnitude(grad_x, grad_y)
+        
+        # Gaussian blur to aggregate energy into regions of interest
+        saliency = cv2.GaussianBlur(magnitude, (21, 21), 5.0)
+        
+        # Normalise to [0, 1]
+        min_v, max_v = np.min(saliency), np.max(saliency)
+        return (saliency - min_v) / (max_v - min_v + 1e-8)

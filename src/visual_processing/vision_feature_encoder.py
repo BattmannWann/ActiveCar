@@ -39,10 +39,10 @@ class FovealVisionEncoder(nn.Module):
             param.requires_grad = False
 
 
-        self.transform = T.compose([T.ToTensor(), T.Normalize(mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]),])
+        self.transform = T.Compose([T.ToTensor(), T.Normalize(mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]),])
 
         #This is just to highlight that we'll have:
-            # output state dimension = 512 visual features
+            # output state dimension = 512 visual features (because of frozen ResNet-18)
             # + 2 gaze coordinates 
             # Therefore, is 514 in total
 

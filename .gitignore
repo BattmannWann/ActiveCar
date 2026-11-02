@@ -1,0 +1,89 @@
+# =====================================================================
+# PROJECT SPECIFIC & REINFORCEMENT LEARNING ARTIFACTS
+# =====================================================================
+
+# Logs & Local Backups
+logs/
+*.log
+*.backup
+*.bak
+
+outputs
+outputs*/
+outputs_old/
+
+
+# Local scripts
+test.sh
+
+# =====================================================================
+# ENVIRONMENTS & SECRETS
+# =====================================================================
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.pixi/
+
+# Package managers (uncomment if you wish to ignore lock files)
+# uv.lock
+# poetry.lock
+# Pipfile.lock
+
+# =====================================================================
+# PYTHON INTERPRETER & BUILD ARTIFACTS
+# =====================================================================
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[codz]
+*$py.class
+
+# C/C++ Extensions & Dynamic Libraries
+*.so
+*.pyd
+*.dll
+
+# Distribution & Build
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# Testing, Coverage & Linters
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# =====================================================================
+# IDEs & OPERATING SYSTEM
+# =====================================================================
+
+# Visual Studio Code & PyCharm
+.vscode/
+.idea/
+
+# macOS / Windows OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
