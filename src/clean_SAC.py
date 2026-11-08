@@ -54,7 +54,7 @@ class CleanSAC:
         self.log_interval = log_interval
         self.learning_steps = 0
 
-        # 1. Actor & Critic Networks
+        #Actor & Critic Networks
         self.policy_net = GaussianPolicy(
             state_dim=self.state_dim,
             action_dim=self.action_dim,
@@ -76,11 +76,11 @@ class CleanSAC:
         self.target_q_net.load_state_dict(self.online_q_net.state_dict())
         disable_gradients(self.target_q_net)
 
-        # 2. Optimizers
+        #Optimisers
         self.policy_optim = Adam(self.policy_net.parameters(), lr=policy_lr)
         self.q_optim = Adam(self.online_q_net.parameters(), lr=q_lr)
 
-        # 3. Dynamic Entropy Tuning
+        #Dynamic Entropy Tuning
         self.target_entropy = -float(self.action_dim)
         self.log_alpha = torch.zeros(1, device=self.device, requires_grad=True)
         self.alpha_optim = Adam([self.log_alpha], lr=entropy_lr)

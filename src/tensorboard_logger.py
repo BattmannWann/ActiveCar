@@ -110,6 +110,7 @@ class ActiveVisionTBLogger:
         self.records_broken_count += 1
         
         speed_kmh = (telemetry or {}).get("speed", 0.0) * 3.6
+        
         if speed_kmh > self.best_speed_kmh:
             self.best_speed_kmh = speed_kmh
 

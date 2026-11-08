@@ -102,17 +102,25 @@ class Agent:
             self._steps = self._replay_buffer._n
             logger.info(f"loaded buffer from {path}. Number of steps: {len(self._replay_buffer)}")
 
+
     def run(self):
+        
         try:
+            
             while True:
+                
                 self.train_episode()
+                
                 if self._steps > self._num_steps:
                     break
+                
                 if self._eval_interval and (self._steps % self._eval_interval == 0):
                     logger.info("Evaluating")
                     self.evaluate()
         finally:
+            
             self.save(os.path.join(self._model_dir, 'final'), save_buffer=self.save_final_buffer)
+
 
     def update_model(self):
         train_stats = None

@@ -235,7 +235,26 @@ class ServerState(dict):
         self["done"] = False
 
     def parse_server_str(self, server_string):
-        self.update( eval(server_string) )
+        
+        safe_env = {
+            "NaN": 0.0,
+            "nan": 0.0,
+            "inf": 0.0,
+            "-inf": 0.0,
+            "Infinity": 0.0,
+            "-Infinity": 0.0,
+            "true": True,
+            "false": False,
+        }
+        
+        try:
+            parsed_dict = eval(server_string, safe_env)
+            self.update(parsed_dict)
+            
+        except Exception as e:
+            # Fallback in case of malformed strings during socket disconnects
+            pass
+        
 
 class DriverControls(dict):
     def __init__(self, vjoy_executed_by_server=False):

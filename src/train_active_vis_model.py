@@ -27,6 +27,7 @@ from assetto_corsa_gym.common.logger import Logger
 import assetto_corsa_gym.common.misc as misc
 from clean_SAC import CleanSAC
 from assetto_corsa_gym.algorithm.discor.discor.agent import Agent
+from visual_processing.fixation_locator import UnbiasedSaliencyEngine, DrivingAssistedSpectralResidualSaliencyEngine
 
 # import common.logging_config as logging_config
 # from common.logger import Logger
@@ -154,6 +155,17 @@ class ActiveVisionAgent(Agent):
                 
                 if self.tb_logger and self._steps % self._log_interval == 0:
                     self.tb_logger.log_scalars(loss_dict, step=self._steps)
+                    
+                    
+            # Fixed-interval checkpointing 
+            if getattr(self, "checkpoint_freq", 0) and (self._steps % self.checkpoint_freq == 0):
+                
+                checkpoint_dir = os.path.join(self._model_dir, "checkpoints", f"step_{self._steps:08d}")
+                os.makedirs(checkpoint_dir, exist_ok = True)
+                
+                logger.info(f"Checkpointing model at {self._steps:,} steps -> {checkpoint_dir}")
+                self.save(checkpoint_dir, save_buffer = False)
+                
 
             #Periodic Active Vision Preview Logging (every 100 steps)
             if self.tb_logger and self._steps % 100 == 0:
@@ -242,8 +254,6 @@ def main():
     #Initialise Soft Actor-Critic (SAC)
     obs_dim = env.observation_space.shape[0]  # 514
     act_dim = env.action_space.shape[0]        # 3
-    logger.info(f"Setting up SAC with State Dimension: {obs_dim}, Action Dimension: {act_dim}")
-
     logger.info(f"Setting up SAC with State Dimension: {obs_dim}, Action Dimension: {act_dim}")
 
     algo = CleanSAC(

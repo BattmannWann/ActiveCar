@@ -18,11 +18,14 @@ from AssettoCorsaEnv.ac_client import Client
 # Import modular vision components
 from visual_processing.vision_feature_encoder import FovealVisionEncoder
 from visual_processing.foveal_extractor import FovealExtractor
-from visual_processing.fixation_locator import UnbiasedSaliencyEngine
+from visual_processing.fixation_locator import UnbiasedSaliencyEngine, DrivingAssistedSpectralResidualSaliencyEngine
 
 
 class DirectWindowGrabber:
-    """Grabs frames directly from the Assetto Corsa window using mss."""
+    
+    """
+    Grabs frames directly from the Assetto Corsa window using mss.
+    """
 
     def __init__(self, window_title: str = "Assetto Corsa", target_width: int = 320, target_height: int = 240):
         
@@ -35,8 +38,6 @@ class DirectWindowGrabber:
         
         self.action_dim = 3
         
-        
-
 
     def _find_window(self):
         
@@ -82,7 +83,7 @@ class AssettoCorsaActiveVisionEnv(gym.Env):
 
     metadata = {"render.modes": ["human", "rgb_array"]}
 
-    def __init__(self, config: Any, crop_size: int = 96, send_reset_on_start: bool = True, render_crop: bool = True, visual_refresh_ms: float = 100.0):
+    def __init__(self, config: Any, crop_size: int = 96, send_reset_on_start: bool = True, render_crop: bool = True, visual_refresh_ms: float = 100.0, saliency_engine = None):
         
         super().__init__()
         self.config = config
@@ -96,7 +97,21 @@ class AssettoCorsaActiveVisionEnv(gym.Env):
             target_width = getattr(config, "final_image_width", 320), target_height = getattr(config, "final_image_height", 240))
 
         # Vision pipeline modules
-        self.saliency_engine = UnbiasedSaliencyEngine()
+        
+        if saliency_engine is None:
+            
+            self.saliency_engine = DrivingAssistedSpectralResidualSaliencyEngine(
+                processing_dim = (128, 128),
+                cockpit_cutoff_ratio = 0.62,  # Masks steering wheel & cockpit
+                mask_softness = 0.07,
+                suppress_sky = True,
+                sky_cutoff_ratio = 0.15,      # Suppresses sky/clouds
+            )
+            
+        else:
+            self.saliency_engine = saliency_engine() if callable(saliency_engine) else saliency_engine
+            
+            
         self.cropper = FovealExtractor(crop_size = crop_size)
         self.encoder = FovealVisionEncoder(device = None)  # Auto-selects CUDA
 
@@ -210,6 +225,9 @@ class AssettoCorsaActiveVisionEnv(gym.Env):
 
         # Reset gear pulse state for launch
         self._shift_pulse_count = 0
+        
+        self.last_lap_distance = None
+        self.last_action = None
 
         return self._get_active_vision_state()
 
@@ -236,6 +254,84 @@ class AssettoCorsaActiveVisionEnv(gym.Env):
 
     def set_actions(self, action: Any):
         self.current_action = self._clean_action(action)
+        
+        
+    def get_reward(self, state_dict: dict, last_lap_dist: float, action: np.ndarray, last_action: np.ndarray) -> tuple[float, float]:
+        
+        """
+        The reward for the agent is calculated from forward track progression, boundary compliance (i.e., staying on the track/asphalt), 
+        and smooth actions, from a camera-based agent, unlike the telemetry-based agent used by the AC_Gym paper. 
+        
+        TLDR; Why is this reward good?
+        
+            1. No Ideal Line Imposed on the Agent: This means that the agent receives NO feedback about whether it is in the middle of the track, hugging the kerb,
+            or taking an unconventional geometric line. It only knows that metres gained along the track circuit is GOOD and leaving the track is BAD
+            
+            2. Naturally Enforces Breaking: If the car carries too much speed and flies off at Turn 1, the episode will terminate with a -2.0 penalty, cutting off
+            thousands of potential future progression rewards. This enables the Q-function the chance to learn to trade off the brief speed drop of braking
+            in exchange for continuing down the track to collect downstream rewards
+            
+            3. No Reversal Exploit: As rewards are given for the lap distance completed instead of direct scalar speed, spinning or driving
+            across off-track yields no positive reinforcement  
+        """
+        
+        current_lap_distance = float(state_dict.get("LapDist", 0.0))
+        track_length = float(state_dict.get("track_length", 4655.0)) #e.g., have the standard as the Barcelona GP track
+        speed_ms = float(state_dict.get("speed", 0.0))
+        
+        #Forward track progression (i.e. metres traversed along the track)
+        if last_lap_dist is not None:
+            delta_dist = current_lap_distance - last_lap_dist
+            
+            #Special logic to handle start/finish line wrap-arounds
+            if delta_dist < -track_length / 2:
+                delta_dist += track_length
+                
+            elif delta_dist > track_length / 2:
+                delta_dist -= track_length
+                
+        else:
+            delta_dist = 0.0
+            
+            
+        #Non-negative progression: 0 when stationary or rolling backwards
+        #At 25hz, 180 km/h = 2.0/step -> reward ~= 0.8 / step
+        # OLD progress_reward = delta_dist / 2.5
+        
+        progress_reward = max(0.0, delta_dist / 2.5)
+        
+        #Deal with the reversal/stagnation
+        # Give a small survival/forward credit if speed > 1 m/s to encourage rolling
+        # if delta_dist <= 0:
+        #     progress_reward = -0.1
+        
+        motion_incentive = 0.05 if speed_ms > 1.0 else 0.0
+            
+        #Suppress high-frequency steering jitter; ONLY applied when in motion
+        smoothness_penalty = 0.0
+        
+        if last_action is not None and speed_ms > 2.0:
+            
+            action_diff = np.linalg.norm(action - last_action, ord = 2)
+            smoothness_penalty = 0.01 * float(action_diff)
+            
+        reward = progress_reward - smoothness_penalty + motion_incentive
+        
+        #Lastly, determine out-of-track terminal signals
+        terminated = bool(state_dict.get("done", False))
+        is_out_of_track = bool(state_dict.get("out_of_track", False))
+        
+        if terminated and is_out_of_track:
+            
+            #Sharp terminal penalty such that the value function propagates the catastrophe of leaving the track
+            reward -= 1.0
+            
+            
+        #Guarantee final output is a finite float
+        if not np.isfinite(reward):
+            reward = 0.0
+            
+        return float(reward), current_lap_distance
 
 
     def step(self, action: Optional[np.ndarray] = None) -> Tuple[np.ndarray, float, bool, dict]:
@@ -276,12 +372,12 @@ class AssettoCorsaActiveVisionEnv(gym.Env):
         # Poll next simulation state
         state_dict = self.client.step_sim()
         obs = self._get_active_vision_state()
+        
+        #Get the reward
+        reward, self.last_lap_distance = self.get_reward(state_dict = state_dict, last_lap_dist = self.last_lap_distance, action = action, last_action = self.last_action)
+        self.last_action = action.copy()
 
-        # Reward: speed in m/s (normalised) with penalty for being stationary
-        speed = state_dict.get("speed", 0.0)
-        reward = float(speed / 30.0)
-
-        terminated = bool(state_dict.get("done", False))
+        terminated = bool(state_dict.get("done", False)) if state_dict else True
         done = terminated
         info = {"telemetry": state_dict, "terminated": terminated}
 
